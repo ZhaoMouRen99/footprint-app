@@ -1,0 +1,8 @@
+{
+  "appId": "com.footprint.world",
+  "appName": "足迹世界",
+  "webDir": "www",
+  "android": {
+    "allowMixedContent": true
+  }
+}
