@@ -1,0 +1,956 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>足迹世界 · 中国地图</title>
+    <script src="https://cdn.jsdelivr.net/npm/echarts@5.5.0/dist/echarts.min.js"></script>
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+
+        body {
+            font-family: "PingFang SC", "Microsoft YaHei", sans-serif;
+            overflow: hidden;
+            background: #0b1a2e;
+            color: #e0e6ed;
+        }
+
+        /* ========== 开场动画 ========== */
+        #intro {
+            position: fixed; inset: 0; z-index: 9999;
+            background: linear-gradient(135deg, #0b1a2e 0%, #1a3a5c 50%, #0b1a2e 100%);
+            display: flex; flex-direction: column; align-items: center; justify-content: center;
+            transition: opacity 1.2s ease, visibility 1.2s;
+        }
+        #intro.hide { opacity: 0; visibility: hidden; pointer-events: none; }
+        .intro-text {
+            font-size: 2.2rem; font-weight: 300; letter-spacing: 4px; text-align: center;
+            line-height: 1.8; color: #f0f4f8;
+            text-shadow: 0 0 30px rgba(100, 180, 255, 0.5);
+            animation: introFadeUp 2s ease forwards; opacity: 0; transform: translateY(30px);
+        }
+        .intro-text .highlight { color: #6bb8ff; font-weight: 500; }
+        .intro-sub {
+            margin-top: 24px; font-size: 0.95rem; letter-spacing: 6px; color: #7a9bb8;
+            animation: introFadeUp 2s 0.6s ease forwards; opacity: 0; transform: translateY(20px);
+        }
+        @keyframes introFadeUp { to { opacity: 1; transform: translateY(0); } }
+        .intro-line {
+            height: 2px; background: linear-gradient(90deg, transparent, #6bb8ff, transparent);
+            margin-top: 30px; animation: lineGrow 2s 1s ease forwards; width: 0;
+        }
+        @keyframes lineGrow { to { width: 120px; } }
+
+        /* ========== 主布局 ========== */
+        #app {
+            display: flex; width: 100vw; height: 100vh;
+            opacity: 0; transition: opacity 0.8s ease 0.3s;
+        }
+        #app.visible { opacity: 1; }
+
+        /* ========== 左侧导航栏 ========== */
+        #sidebar {
+            width: 148px; flex-shrink: 0;
+            background: rgba(10, 25, 47, 0.92);
+            border-right: 1px solid rgba(107, 184, 255, 0.15);
+            display: flex; flex-direction: column; overflow: hidden; z-index: 10;
+        }
+        .sidebar-header {
+            padding: 14px 10px 10px; font-size: 0.88rem; font-weight: 600;
+            letter-spacing: 1px; color: #6bb8ff;
+            border-bottom: 1px solid rgba(107, 184, 255, 0.12);
+        }
+        .sidebar-header small {
+            display: block; font-size: 0.54rem; color: #5a7a9a;
+            font-weight: 400; letter-spacing: 1px; margin-top: 3px;
+        }
+        #provinceList { flex: 1; overflow-y: auto; padding: 6px 0 16px; }
+        #provinceList::-webkit-scrollbar { width: 3px; }
+        #provinceList::-webkit-scrollbar-thumb {
+            background: rgba(107, 184, 255, 0.3); border-radius: 2px;
+        }
+        .province-item {
+            padding: 7px 12px; font-size: 0.76rem; color: #a0b8d0;
+            cursor: pointer; transition: all 0.2s;
+            border-left: 3px solid transparent;
+            white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+        }
+        .province-item:hover { background: rgba(107, 184, 255, 0.08); color: #d0e4ff; }
+        .province-item.active {
+            color: #6bb8ff; border-left-color: #6bb8ff;
+            background: rgba(107, 184, 255, 0.1);
+        }
+
+        /* 侧边栏底部：备份操作 */
+        .sidebar-footer {
+            padding: 10px 8px 12px;
+            border-top: 1px solid rgba(107, 184, 255, 0.12);
+            display: flex; flex-direction: column; gap: 6px;
+        }
+        .store-stat {
+            font-size: 0.62rem; color: #4a6a8a;
+            text-align: center; letter-spacing: 0.5px; margin-bottom: 2px;
+        }
+        .side-btn {
+            padding: 7px 8px; font-size: 0.7rem; text-align: center;
+            background: rgba(30, 107, 184, 0.15);
+            border: 1px solid rgba(107, 184, 255, 0.2);
+            border-radius: 5px; color: #a0c8f0; cursor: pointer;
+            transition: all 0.2s; letter-spacing: 0.5px;
+        }
+        .side-btn:hover {
+            background: rgba(30, 107, 184, 0.3);
+            border-color: rgba(107, 184, 255, 0.4);
+        }
+
+        /* ========== 地图区域 ========== */
+        #mapWrap {
+            flex: 1; position: relative;
+background: radial-gradient(ellipse at 50% 50%, #12283f 0%, #0b1a2e 100%);
+        }
+        #mapContainer { width: 100%; height: 100%; }
+
+        #backBtn {
+            position: absolute; top: 22px; left: 22px; z-index: 20;
+            padding: 9px 20px; background: rgba(20, 50, 80, 0.85);
+            backdrop-filter: blur(8px);
+            border: 1px solid rgba(107, 184, 255, 0.3);
+            border-radius: 6px; color: #a0d0ff; font-size: 0.82rem;
+            cursor: pointer; transition: all 0.25s; display: none; letter-spacing: 1px;
+        }
+        #backBtn:hover {
+            background: rgba(40, 90, 140, 0.9);
+            border-color: #6bb8ff; color: #fff;
+        }
+        #backBtn.show { display: block; }
+
+        #statusTip {
+            position: absolute; bottom: 22px; left: 50%;
+            transform: translateX(-50%); z-index: 20;
+            padding: 7px 18px; background: rgba(10, 25, 47, 0.8);
+            border: 1px solid rgba(107, 184, 255, 0.15);
+            border-radius: 20px; font-size: 0.72rem; color: #7a9bb8;
+            letter-spacing: 1px; pointer-events: none; transition: opacity 0.5s;
+        }
+
+        /* ========== 模态框通用 ========== */
+        .modal-overlay {
+            position: fixed; inset: 0; z-index: 1000;
+            background: rgba(0, 0, 0, 0.6); backdrop-filter: blur(6px);
+            display: flex; align-items: center; justify-content: center;
+            opacity: 0; visibility: hidden; transition: opacity 0.3s, visibility 0.3s;
+        }
+        .modal-overlay.active { opacity: 1; visibility: visible; }
+
+        .modal-box {
+            background: #142940; border: 1px solid rgba(107, 184, 255, 0.2);
+            border-radius: 12px; padding: 32px 36px;
+            width: 400px; max-width: 92vw;
+            box-shadow: 0 20px 60px rgba(0, 0, 0, 0.5);
+            transform: translateY(10px); transition: transform 0.3s;
+        }
+        .modal-overlay.active .modal-box { transform: translateY(0); }
+
+        .modal-box h3 {
+            font-size: 1.1rem; font-weight: 500; color: #6bb8ff;
+            margin-bottom: 8px; letter-spacing: 1px;
+        }
+        .modal-box .sub {
+            font-size: 0.78rem; color: #5a7a9a;
+            margin-bottom: 22px; line-height: 1.7;
+        }
+
+        /* 密码输入 */
+        .pw-input-wrap { display: flex; gap: 12px; margin-bottom: 20px; justify-content: center; }
+        .pw-input-wrap input {
+            width: 52px; height: 60px; text-align: center; font-size: 1.6rem;
+            background: #0b1a2e; border: 1px solid rgba(107, 184, 255, 0.25);
+            border-radius: 8px; color: #e0e6ed; outline: none;
+            transition: border-color 0.2s; caret-color: #6bb8ff;
+        }
+        .pw-input-wrap input:focus {
+            border-color: #6bb8ff;
+            box-shadow: 0 0 0 3px rgba(107, 184, 255, 0.15);
+        }
+        .pw-error {
+            color: #ff6b6b; font-size: 0.78rem; text-align: center;
+            height: 18px; margin-bottom: 12px;
+        }
+
+        .btn-row { display: flex; gap: 12px; justify-content: flex-end; }
+        .btn {
+            padding: 9px 24px; border-radius: 6px; font-size: 0.85rem;
+            cursor: pointer; border: none; transition: all 0.2s; letter-spacing: 1px;
+        }
+        .btn-primary { background: #1e6bb8; color: #fff; }
+        .btn-primary:hover { background: #2a7fd4; }
+        .btn-ghost {
+            background: transparent; color: #7a9bb8;
+            border: 1px solid rgba(107, 184, 255, 0.2);
+        }
+        .btn-ghost:hover { color: #a0d0ff; border-color: rgba(107, 184, 255, 0.4); }
+
+        /* ========== 足迹查看/编辑模态框 ========== */
+        #cityModal .modal-box {
+            width: 720px; max-width: 94vw; max-height: 86vh;
+            display: flex; flex-direction: column; padding: 0; overflow: hidden;
+        }
+        .edit-header {
+            padding: 20px 28px 16px;
+            border-bottom: 1px solid rgba(107, 184, 255, 0.1);
+            display: flex; align-items: center; justify-content: space-between;
+        }
+        .edit-header h3 { font-size: 1.05rem; color: #6bb8ff; margin: 0; }
+        .edit-header .city-tag {
+            font-size: 0.72rem; color: #5a7a9a;
+            background: rgba(107, 184, 255, 0.08);
+            padding: 4px 12px; border-radius: 20px;
+        }
+
+        .edit-body { flex: 1; overflow-y: auto; padding: 20px 28px; }
+        .edit-body::-webkit-scrollbar { width: 4px; }
+        .edit-body::-webkit-scrollbar-thumb {
+            background: rgba(107, 184, 255, 0.25); border-radius: 2px;
+        }
+
+        #viewContent, #editableContent {
+            min-height: 260px; font-size: 0.92rem; line-height: 1.9;
+            color: #d0dae8; outline: none;
+        }
+        #editableContent:empty:before {
+            content: "在这里记录你的足迹故事，插入图片或写下文字…";
+            color: #3a5a7a; pointer-events: none;
+        }
+        #viewContent img, #editableContent img {
+            max-width: 100%; border-radius: 8px; margin: 10px 0;
+            display:block; box-shadow: 0 4px 16px rgba(0, 0, 0, 0.3);
+        }
+
+        .empty-hint {
+            text-align: center; padding: 60px 20px;
+            color: #4a6a8a; font-size: 0.95rem; line-height: 2.1;
+        }
+        .empty-hint span { font-size: 0.78rem; color: #35526e; }
+
+        .edit-toolbar {
+            padding: 14px 28px;
+            border-top: 1px solid rgba(107, 184, 255, 0.1);
+            background: rgba(10, 25, 47, 0.5);
+        }
+        .toolbar-group {
+            display: flex; gap: 10px; align-items: center; width: 100%;
+        }
+        .readonly-hint { font-size: 0.72rem; color: #4a6a8a; letter-spacing: 1px; }
+        .edit-toolbar .btn { font-size: 0.78rem; padding: 7px 18px; }
+        .edit-toolbar .spacer { flex: 1; }
+
+        .file-label {
+            display: inline-flex; align-items: center; gap: 6px;
+            padding: 7px 16px; border-radius: 6px; font-size: 0.78rem;
+            cursor: pointer; background: rgba(30, 107, 184, 0.2);
+            border: 1px solid rgba(107, 184, 255, 0.2); color: #a0c8f0;
+            transition: all 0.2s;
+        }
+        .file-label:hover {
+            background: rgba(30, 107, 184, 0.35);
+            border-color: rgba(107, 184, 255, 0.4);
+        }
+        .file-label input { display: none; }
+
+        /* Toast */
+        #toast {
+            position: fixed; top: 30px; left: 50%;
+            transform: translateX(-50%) translateY(-20px);
+            z-index: 2000; padding: 12px 28px;
+            background: rgba(20, 50, 80, 0.95);
+            border: 1px solid rgba(107, 184, 255, 0.3);
+            border-radius: 8px; color: #a0d0ff; font-size: 0.85rem;
+            opacity: 0; transition: all 0.35s ease;
+            pointer-events: none; letter-spacing: 1px;
+            max-width: 90vw; text-align: center; line-height: 1.5;
+        }
+        #toast.show { opacity: 1; transform: translateX(-50%) translateY(0); }
+    </style>
+</head>
+<body>
+
+    <!-- 开场动画 -->
+    <div id="intro">
+        <div class="intro-text">你好！欢迎来到我们的<span class="highlight">足迹世界</span></div>
+        <div class="intro-sub">一起去看看吧！</div>
+        <div class="intro-line"></div>
+    </div>
+
+    <!-- 主应用 -->
+    <div id="app">
+        <aside id="sidebar">
+            <div class="sidebar-header">足迹导航<small>FOOTPRINT MAP</small></div>
+            <div id="provinceList"></div>
+            <div class="sidebar-footer">
+                <div class="store-stat" id="storeStat">本地存储加载中…</div>
+                <button class="side-btn" onclick="exportBackup()">⬇ 导出备份到手机</button>
+                <button class="side-btn" onclick="triggerImport()">⬆ 从备份恢复</button>
+                <input type="file" id="importInput" accept=".json,application/json"
+                       style="display:none" onchange="handleImport(event)">
+            </div>
+        </aside>
+        <div id="mapWrap">
+            <div id="mapContainer"></div>
+            <button id="backBtn" onclick="backToChina()">← 返回全国</button>
+            <div id="statusTip">点击省份下钻 · 点击地级市查看足迹</div>
+        </div>
+    </div>
+
+    <!-- 密码验证模态框 -->
+    <div class="modal-overlay" id="pwModal">
+        <div class="modal-box">
+            <h3>🔒 编辑验证</h3>
+            <p class="sub">足迹内容公开可见，编辑需输入 4 位数密码</p>
+            <div class="pw-input-wrap">
+                <input type="password" maxlength="1" id="pw1" inputmode="numeric" autocomplete="off">
+                <input type="password" maxlength="1" id="pw2" inputmode="numeric" autocomplete="off">
+                <input type="password" maxlength="1" id="pw3" inputmode="numeric" autocomplete="off">
+                <input type="password" maxlength="1" id="pw4" inputmode="numeric" autocomplete="off">
+            </div>
+            <div class="pw-error" id="pwError"></div>
+            <div class="btn-row">
+                <button class="btn btn-ghost" onclick="closePwModal()">取消</button>
+                <button class="btn btn-primary" onclick="verifyPassword()">确认</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- 足迹查看/编辑模态框 -->
+    <div class="modal-overlay" id="cityModal">
+        <div class="modal-box">
+            <div class="edit-header">
+                <h3 id="modalTitle">📍 足迹浏览</h3>
+                <span class="city-tag" id="editCityName">—</span>
+            </div>
+            <div class="edit-body">
+                <div id="viewContent"></div>
+                <div id="editableContent" contenteditable="true" style="display:none;"></div>
+            </div>
+            <div class="edit-toolbar">
+                <div id="viewToolbar" class="toolbar-group">
+                    <span class="readonly-hint">👁 内容公开可见</span>
+                    <div class="spacer"></div>
+                    <button class="btn btn-ghost" onclick="closeCityModal()">关闭</button>
+                    <button class="btn btn-primary" onclick="requestEdit()">✏️ 编辑足迹</button>
+                </div>
+                <div id="editToolbar" class="toolbar-group" style="display:none;">
+                    <label class="file-label">
+                        📷 插入图片
+                        <input type="file" accept="image/*" id="imageInput" onchange="handleImageUpload(event)">
+                    </label>
+                    <div class="spacer"></div>
+                    <button class="btn btn-ghost" onclick="cancelEdit()">取消</button>
+                    <button class="btn btn-primary" onclick="saveFootprint()">保存足迹</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div id="toast"></div>
+
+    <script>
+        // ==================== 全局状态 ====================
+        let chart = null;
+        let currentLevel = 'china';
+        let currentProvinceName = '';
+        let currentProvinceAdcode = '';
+        let currentCityName = '';
+        let currentCityAdcode = '';
+        let isEditMode = false;
+
+        let provinceData = [];
+        let chinaGeoJson = null;
+
+        const PASSWORD = '1201';
+        const MAP_API = 'https://geo.datav.aliyun.com/areas_v3/bound/';
+        const EMPTY_HINT_HTML = '<div class="empty-hint">🌱 这里还没有足迹记录<br><span>点击下方「编辑足迹」开始记录吧</span></div>';
+
+        // ==================== IndexedDB 存储层 ====================
+        const DB_NAME = 'footprintWorldDB';
+        const DB_VERSION = 1;
+        const DB_STORE = 'footprints';
+        let db = null;
+
+        // 内存缓存：cityName -> html，启动时从 IndexedDB 全量载入
+        const contentCache = new Map();
+
+        function openDB() {
+            return new Promise((resolve, reject) => {
+                if (!window.indexedDB) {
+                    reject(new Error('当前浏览器不支持 IndexedDB'));
+                    return;
+                }
+                const req = indexedDB.open(DB_NAME, DB_VERSION);
+                req.onupgradeneeded = (e) => {
+                    const d = e.target.result;
+                    if (!d.objectStoreNames.contains(DB_STORE)) {
+                        d.createObjectStore(DB_STORE);
+                    }
+                };
+                req.onsuccess = (e) => { db = e.target.result; resolve(db); };
+                req.onerror = (e) => reject(e.target.error || new Error('打开数据库失败'));
+            });
+        }
+
+        function idbGetAll() {
+            return new Promise((resolve, reject) => {
+                const tx = db.transaction(DB_STORE, 'readonly');
+                const store = tx.objectStore(DB_STORE);
+                const result = {};
+                const req = store.openCursor();
+                req.onsuccess = (e) => {
+                    const cursor = e.target.result;
+                    if (cursor) {
+                        result[cursor.key] = cursor.value;
+                        cursor.continue();
+                    } else {
+                        resolve(result);
+                    }
+                };
+                req.onerror = (e) => reject(e.target.error);
+            });
+        }
+
+        function idbSet(key, value) {
+            return new Promise((resolve, reject) => {
+                const tx = db.transaction(DB_STORE, 'readwrite');
+                const store = tx.objectStore(DB_STORE);
+                const req = store.put(value, key);
+                req.onsuccess = () => resolve();
+                req.onerror = (e) => reject(e.target.error);
+            });
+        }
+
+        // 迁移旧版本 localStorage 中的数据（footprint_ 前缀）
+        async function migrateFromLocalStorage() {
+            try {
+                const keys = [];
+                for (let i = 0; i < localStorage.length; i++) {
+                    const k = localStorage.key(i);
+                    if (k && k.startsWith('footprint_')) keys.push(k);
+                }
+                let migrated = 0;
+                for (const k of keys) {
+                    const v = localStorage.getItem(k);
+                    const cityName = k.slice('footprint_'.length);
+                    if (v && v.trim() && !contentCache.has(cityName)) {
+                        contentCache.set(cityName, v);
+                        await idbSet(cityName, v);
+                        migrated++;
+                    }
+                    localStorage.removeItem(k);
+                }
+                if (migrated > 0) {
+                    showToast(`已迁移 ${migrated} 条旧足迹到本地数据库`);
+                }
+            } catch (e) {
+                // localStorage 不可用时忽略
+                console.warn('迁移旧数据跳过', e);
+            }
+        }
+
+        async function initStorage() {
+            try {
+                await openDB();
+                const all = await idbGetAll();
+                Object.keys(all).forEach(k => contentCache.set(k, all[k]));
+                await migrateFromLocalStorage();
+                updateStoreStat();
+                console.log('本地数据库已就绪，共', contentCache.size, '条记录');
+            } catch (e) {
+                console.error('存储初始化失败', e);
+                showToast('本地存储不可用，编辑内容将无法长期保存');
+                // 降级：仍用内存缓存，至少本次会话可用
+            }
+        }
+
+        function updateStoreStat() {
+            const el = document.getElementById('storeStat');
+            if (el) el.textContent = `已记录 ${contentCache.size} 个地区`;
+        }
+
+        // ==================== 初始化 ====================
+        window.addEventListener('DOMContentLoaded', () => {
+            setTimeout(() => {
+                document.getElementById('intro').classList.add('hide');
+                document.getElementById('app').classList.add('visible');
+                setTimeout(startApp, 400);
+            }, 3200);
+        });
+
+        async function startApp() {
+            await initStorage();   // 先加载本地数据，再初始化地图
+            await initMap();
+        }
+
+        async function initMap() {
+            chart = echarts.init(document.getElementById('mapContainer'));
+            try {
+                const res = await fetch(MAP_API + '100000_full.json');
+                chinaGeoJson = await res.json();
+                provinceData = chinaGeoJson.features;
+                echarts.registerMap('china', chinaGeoJson);
+                renderChinaMap();
+                buildSidebar();
+            } catch (e) {
+                showToast('地图数据加载失败，请检查网络');
+                console.error(e);
+            }
+            chart.on('click', handleMapClick);
+            window.addEventListener('resize', () => chart.resize());
+        }
+
+        // ==================== 渲染中国地图 ====================
+        function renderChinaMap() {
+            const option = {
+                tooltip: {
+                    trigger: 'item',
+                    backgroundColor: 'rgba(10, 25, 47, 0.92)',
+                    borderColor: 'rgba(107, 184, 255, 0.3)',
+                    textStyle: { color: '#e0e6ed', fontSize: 13 },
+                    formatter: (p) => {
+                        const mark = contentCache.has(p.name) ? ' 📍' : '';
+                        return `<strong>${p.name}</strong>${mark}<br/><span style="color:#7a9bb8;font-size:11px;">点击下钻至市级</span>`;
+                    }
+                },
+                series: [{
+                    type: 'map', map: 'china', roam: true,
+                    zoom: 1.28, center: [104.5, 36.0],
+                    label: {
+                        show: true, fontSize: 9,
+                        color: 'rgba(200, 220, 240, 0.75)',
+                        formatter: (p) => p.name.replace(/省|市|自治区|特别行政区|维吾尔|壮族|回族/g, '')
+                    },
+                    itemStyle: {
+                        areaColor: '#1a3a5c',
+                        borderColor: 'rgba(107, 184, 255, 0.35)',
+                        borderWidth: 0.8,
+                    },
+                    emphasis: {
+                        itemStyle: {
+                            areaColor: '#2a6aaa', borderColor: '#6bb8ff',
+                            borderWidth: 1.2, shadowBlur: 20,
+                            shadowColor: 'rgba(107, 184, 255, 0.4)'
+                        },
+                        label: { color: '#fff', fontSize: 10 }
+                    },
+                    select: { disabled: true }
+                }]
+            };
+            chart.setOption(option, true);
+            currentLevel = 'china';
+            document.getElementById('backBtn').classList.remove('show');
+            setActiveProvince('');
+        }
+
+        // ==================== 侧边栏 ====================
+function buildSidebar() {
+            const list = document.getElementById('provinceList');
+            list.innerHTML = '';
+            provinceData.forEach(f => {
+                const name = f.properties.name;
+                if (!name) return;
+                const div = document.createElement('div');
+                div.className = 'province-item';
+                div.textContent = name;
+                div.dataset.name = name;
+                div.onclick = () => focusProvince(name, f.properties.adcode);
+                list.appendChild(div);
+            });
+        }
+        function setActiveProvince(name) {
+            document.querySelectorAll('.province-item').forEach(el => {
+                el.classList.toggle('active', el.dataset.name === name);
+            });
+        }
+        async function focusProvince(name, adcode) {
+            setActiveProvince(name);
+            await drillDownToProvince(name, adcode);
+        }
+
+        // ==================== 地图点击 ====================
+        async function handleMapClick(params) {
+            if (currentLevel === 'china') {
+                const feature = provinceData.find(f => f.properties.name === params.name);
+                if (feature) await drillDownToProvince(params.name, feature.properties.adcode);
+            } else if (currentLevel === 'province') {
+                openCityModal(params.name, params.name);
+            }
+        }
+
+        // ==================== 下钻省份 ====================
+        async function drillDownToProvince(provinceName, adcode) {
+            try {
+                showToast(`正在加载 ${provinceName} …`);
+                const res = await fetch(MAP_API + adcode + '_full.json');
+                const geoJson = await res.json();
+                if (!geoJson.features || geoJson.features.length === 0) {
+                    showToast(`${provinceName} 暂无市级数据`);
+                    return;
+                }
+                echarts.registerMap(provinceName, geoJson);
+                const option = {
+                    tooltip: {
+                        trigger: 'item',
+                        backgroundColor: 'rgba(10, 25, 47, 0.92)',
+                        borderColor: 'rgba(107, 184, 255, 0.3)',
+                        textStyle: { color: '#e0e6ed', fontSize: 13 },
+                        formatter: (p) => {
+                            const mark = contentCache.has(p.name) ? ' 📍 已有足迹' : '';
+                            return `<strong>${p.name}</strong>${mark}<br/><span style="color:#7a9bb8;font-size:11px;">点击查看足迹</span>`;
+                        }
+                    },
+                    series: [{
+                        type: 'map', map: provinceName, roam: true, zoom: 1.18,
+                        label: {
+                            show: true, fontSize: 10,
+                            color: 'rgba(200, 220, 240, 0.8)',
+                            formatter: (p) => p.name.replace(/市|区|县|自治州|地区|盟/g, '')
+                        },
+                        itemStyle: {
+                            areaColor: '#1a3a5c',
+                            borderColor: 'rgba(107, 184, 255, 0.4)',
+                            borderWidth: 0.8,
+                        },
+                        emphasis: {
+                            itemStyle: {
+                                areaColor: '#2a6aaa', borderColor: '#6bb8ff',
+                                borderWidth: 1.2, shadowBlur: 20,
+                                shadowColor: 'rgba(107, 184, 255, 0.4)'
+                            }
+                        },
+                        select: { disabled: true }
+                    }]
+                };
+                chart.setOption(option, true);
+                currentLevel = 'province';
+                currentProvinceName = provinceName;
+                currentProvinceAdcode = adcode;
+                document.getElementById('backBtn').classList.add('show');
+                document.getElementById('statusTip').textContent = `当前：${provinceName} · 点击地级市查看足迹`;
+                setActiveProvince(provinceName);
+            } catch (e) {
+                showToast(`${provinceName} 地图加载失败`);
+                console.error(e);
+            }
+        }
+
+        function backToChina() {
+            if (currentLevel === 'china') return;
+            renderChinaMap();
+            currentLevel = 'china';
+            currentProvinceName = '';
+            currentProvinceAdcode = '';
+            document.getElementById('backBtn').classList.remove('show');
+            document.getElementById('statusTip').textContent = '点击省份下钻 · 点击地级市查看足迹';
+            setActiveProvince('');
+        }
+
+        // ==================== 打开足迹查看（从内存缓存读取，同步） ====================
+        function openCityModal(cityName, adcode) {
+            currentCityName = cityName;
+            currentCityAdcode = adcode || cityName;
+            document.getElementById('editCityName').textContent = cityName;
+            renderViewContent();
+            setReadonlyMode();
+            document.getElementById('cityModal').classList.add('active');
+        }
+
+        function closeCityModal() {
+            if (isEditMode && !confirm('退出将丢失未保存的编辑，确定吗？')) return;
+            document.getElementById('cityModal').classList.remove('active');
+            isEditMode = false;
+        }
+
+        function renderViewContent() {
+            const saved = contentCache.get(currentCityAdcode);
+            const viewEl = document.getElementById('viewContent');
+            if (saved && saved.trim() && saved.trim() !== '<br>') {
+                viewEl.innerHTML = saved;
+            } else {
+                viewEl.innerHTML = EMPTY_HINT_HTML;
+            }
+        }
+
+        function setReadonlyMode() {
+            isEditMode = false;
+            document.getElementById('modalTitle').textContent = '📍 足迹浏览';
+            document.getElementById('viewContent').style.display = 'block';
+            document.getElementById('editableContent').style.display = 'none';
+            document.getElementById('viewToolbar').style.display = 'flex';
+            document.getElementById('editToolbar').style.display = 'none';
+        }
+
+        // ==================== 编辑验证 ====================
+        function requestEdit() {
+            ['pw1', 'pw2', 'pw3', 'pw4'].forEach(id => document.getElementById(id).value = '');
+            document.getElementById('pwError').textContent = '';
+            document.getElementById('pwModal').classList.add('active');
+            setTimeout(() => document.getElementById('pw1').focus(), 100);
+        }
+
+        function closePwModal() {
+            document.getElementById('pwModal').classList.remove('active');
+        }
+
+        function verifyPassword() {
+            const p1 = document.getElementById('pw1').value;
+            const p2 = document.getElementById('pw2').value;
+            const p3 = document.getElementById('pw3').value;
+            const p4 = document.getElementById('pw4').value;
+            const input = p1 + p2 + p3 + p4;
+            if (input.length !== 4) {
+                document.getElementById('pwError').textContent = '请输入完整的4位密码';
+                return;
+            }
+            if (input === PASSWORD) {
+                document.getElementById('pwModal').classList.remove('active');
+                enterEditMode();
+            } else {
+                document.getElementById('pwError').textContent = '密码错误，请重试';
+                ['pw1', 'pw2', 'pw3', 'pw4'].forEach(id => document.getElementById(id).value = '');
+                document.getElementById('pw1').focus();
+            }
+        }
+
+        function setupPwInputs() {
+            const ids = ['pw1', 'pw2', 'pw3', 'pw4'];
+            ids.forEach((id, idx) => {
+                const el = document.getElementById(id);
+                el.addEventListener('input', () => {
+                    if (el.value && idx < 3) document.getElementById(ids[idx + 1]).focus();
+                });
+                el.addEventListener('keydown', (e) => {
+                    if (e.key === 'Backspace' && !el.value && idx > 0) {
+                        document.getElementById(ids[idx - 1]).focus();
+                    }
+                    if (e.key === 'Enter') verifyPassword();
+                });
+            });
+        }
+        setupPwInputs();
+
+        document.getElementById('pwModal').addEventListener('click', (e) => {
+            if (e.target === e.currentTarget) closePwModal();
+        });
+
+        // ==================== 进入编辑模式 ====================
+        function enterEditMode() {
+            isEditMode = true;
+            document.getElementById('modalTitle').textContent = '✏️ 编辑足迹';
+            const saved = contentCache.get(currentCityAdcode) || '';
+            const editable = document.getElementById('editableContent');
+            editable.innerHTML = saved;
+            document.getElementById('viewContent').style.display = 'none';
+            editable.style.display = 'block';
+            document.getElementById('viewToolbar').style.display = 'none';
+            document.getElementById('editToolbar').style.display = 'flex';
+            editable.focus();
+        }
+
+        function cancelEdit() {
+            renderViewContent();
+            setReadonlyMode();
+        }
+
+        // ==================== 图片压缩（IndexedDB 容量大，可放宽到 1000px） ====================
+        function compressImage(file, maxWidth = 1000, quality = 0.75) {
+            return new Promise((resolve, reject) => {
+                const reader = new FileReader();
+                reader.onload = (e) => {
+                    const img = new Image();
+                    img.onload = () => {
+                        let { width, height } = img;
+                        if (width > maxWidth) {
+                            height = Math.round(height * maxWidth / width);
+                            width = maxWidth;
+                        }
+                        const canvas = document.createElement('canvas');
+                        canvas.width = width;
+                        canvas.height = height;
+                        const ctx = canvas.getContext('2d');
+                        ctx.fillStyle = '#ffffff';
+                        ctx.fillRect(0, 0, width, height);
+                        ctx.drawImage(img, 0, 0, width, height);
+                        resolve(canvas.toDataURL('image/jpeg', quality));
+                    };
+                    img.onerror = () => reject(new Error('图片加载失败'));
+                    img.src = e.target.result;
+                };
+                reader.onerror = () => reject(new Error('文件读取失败'));
+                reader.readAsDataURL(file);
+            });
+        }
+
+        async function handleImageUpload(event) {
+            const file = event.target.files[0];
+            event.target.value = '';
+            if (!file) return;
+            if (!file.type.startsWith('image/')) {
+                showToast('请选择图片文件');
+                return;
+            }
+            if (file.size > 20 * 1024 * 1024) {
+                showToast('图片过大（>20MB），请选择较小的图片');
+                return;
+            }
+            try {
+                showToast('正在压缩图片…');
+                const base64 = await compressImage(file);
+                const img = document.createElement('img');
+                img.src = base64;
+                const editable = document.getElementById('editableContent');
+                editable.appendChild(img);
+                editable.appendChild(document.createElement('br'));
+                const body = document.querySelector('#cityModal .edit-body');
+                if (body) body.scrollTop = 99999;
+                showToast('图片已插入 ✓');
+            } catch (e) {
+                console.error(e);
+                showToast('图片处理失败：' + e.message);
+            }
+        }
+
+        // ==================== 保存足迹（写入内存 + IndexedDB） ====================
+        async function saveFootprint() {
+            const html = document.getElementById('editableContent').innerHTML;
+            const key = currentCityAdcode;
+
+            // 先更新内存，UI 立即响应
+            if (html && html.trim() && html.trim() !== '<br>') {
+                contentCache.set(key, html);
+            } else {
+                contentCache.delete(key);
+            }
+
+            try {
+                if (db) {
+                    await idbSet(key, html);
+                    // 写入后校验
+                    const all = await idbGetAll();
+                    if ((all[key] || '') !== html) {
+                        throw new Error('写入校验失败');
+                    }
+                }
+                showToast(`已保存到手机本地 ✓ ${currentCityName}`);
+                updateStoreStat();
+                renderViewContent();
+                setReadonlyMode();
+            } catch (e) {
+                console.error('保存失败', e);
+                showToast('保存失败：' + (e.message || '本地数据库写入异常'));
+            }
+        }
+
+        document.getElementById('cityModal').addEventListener('click', (e) => {
+            if (e.target === e.currentTarget) closeCityModal();
+        });
+
+        // ==================== 导出备份到手机文件系统 ====================
+        function exportBackup() {
+            if (contentCache.size === 0) {
+                showToast('还没有可导出的足迹内容');
+                return;
+            }
+            const data = {};
+            contentCache.forEach((v, k) => { data[k] = v; });
+            const payload = {
+                app: 'footprint-world',
+                version: 2,
+                exportAt: new Date().toISOString(),
+                count: contentCache.size,
+                footprints: data
+            };
+            try {
+                const blob = new Blob([JSON.stringify(payload, null, 2)], { type: 'application/json' });
+                const url = URL.createObjectURL(blob);
+                const a = document.createElement('a');
+                const d = new Date();
+                const stamp = `${d.getFullYear()}${String(d.getMonth() + 1).padStart(2, '0')}${String(d.getDate()).padStart(2, '0')}`;
+                a.href = url;
+                a.download = `足迹世界备份_${stamp}.json`;
+                document.body.appendChild(a);
+                a.click();
+                document.body.removeChild(a);
+                setTimeout(() => URL.revokeObjectURL(url), 3000);
+                showToast(`已导出 ${contentCache.size} 个地区的足迹，请到手机「下载」中查看`);
+            } catch (e) {
+                console.error(e);
+                showToast('导出失败：' + e.message);
+            }
+        }
+
+        // ==================== 从备份恢复 ====================
+        function triggerImport() {
+            document.getElementById('importInput').click();
+        }
+
+        async function handleImport(event) {
+            const file = event.target.files[0];
+            event.target.value = '';
+            if (!file) return;
+            try {
+                showToast('正在读取备份文件…');
+                const text = await file.text();
+                const payload = JSON.parse(text);
+                const fps = payload.footprints || payload.data || payload;
+                if (!fps || typeof fps !== 'object' || Array.isArray(fps)) {
+                    throw new Error('备份文件格式不正确');
+                }
+                const keys = Object.keys(fps);
+                if (keys.length === 0) {
+                    showToast('备份文件中没有足迹内容');
+                    return;
+                }
+                const overwrite = contentCache.size > 0
+                    ? confirm(`备份包含 ${keys.length} 个地区。\n当前已有 ${contentCache.size} 个地区。\n\n点「确定」合并（同名覆盖），点「取消」放弃恢复。`)
+                    : true;
+                if (!overwrite) return;
+
+                let ok = 0, fail = 0;
+                for (const k of keys) {
+                    const v = fps[k];
+                    if (typeof v !== 'string') continue;
+                    contentCache.set(k, v);
+                    try {
+                        if (db) await idbSet(k, v);
+                        ok++;
+                    } catch (e) {
+                        fail++;
+                    }
+                }
+                updateStoreStat();
+                renderViewContent();
+                if (currentLevel === 'province') chart.setOption({ series: [{ type: 'map' }] });
+                showToast(`恢复完成：成功 ${ok} 条${fail ? '，失败 ' + fail + ' 条' : ''}`);
+            } catch (e) {
+                console.error(e);
+                showToast('恢复失败：' + e.message);
+            }
+        }
+
+        // ==================== Toast ====================
+        let toastTimer = null;
+        function showToast(msg) {
+            const el = document.getElementById('toast');
+            el.textContent = msg;
+            el.classList.add('show');
+            clearTimeout(toastTimer);
+            toastTimer = setTimeout(() => el.classList.remove('show'), 2600);
+        }
+
+        // ==================== 快捷键 ====================
+        document.addEventListener('keydown', (e) => {
+            if (e.key === 'Escape') {
+                if (document.getElementById('pwModal').classList.contains('active')) closePwModal();
+                else if (document.getElementById('cityModal').classList.contains('active')) closeCityModal();
+            }
+        });
+    </script>
+</body>
+</html>
